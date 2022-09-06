@@ -1,2 +1,5 @@
 .env
 venv
+Pipfile
+Pipfile.lock
+requirements.txt
