@@ -9,6 +9,7 @@ import keyboards as kb  # do your keyboards HERE!
 if os.path.exists('.env'):
     load_dotenv('.env')  # call me if you don't have one
 
+
 BOT_KEY = os.getenv('API_TOKEN')
 
 logging.basicConfig(level=logging.INFO)
@@ -44,6 +45,18 @@ async def subject_menu(callback_query: types.CallbackQuery):
     await bot.send_message(callback_query.from_user.id, 'Выбери предмет',
                            reply_markup=kb.subjects(bot_msg, info_type.split('-')[0]))  # subject entry
 
+@dp.message_handler()
+async def reg(message: types.Message):
+    Group = str(message.chat.id)+'.txt' #Take name of Group file
+    Chat_Member_List = open(Group,'a+')  #Open group file or generate it
+    Chat_Member_List.seek(0) #Go to start
+    This_list= Chat_Member_List.readlines() # read file
+    print(This_list)
+    if str(message.from_user.username)+'\n' in This_list: #If user in file, close it
+        Chat_Member_List.close()
+    else:
+        Chat_Member_List.write(str(message.from_user.username)+'\n')
+        Chat_Member_List.close()
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
