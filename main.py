@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, types, executor
 from dotenv import load_dotenv
 
 import keyboards as kb  # do your keyboards HERE!
-
+import tag as tg
 if os.path.exists('.env'):
     load_dotenv('.env')  # call me if you don't have one
 
@@ -45,6 +45,10 @@ async def subject_menu(callback_query: types.CallbackQuery):
     await bot.send_message(callback_query.from_user.id, 'Выбери предмет',
                            reply_markup=kb.subjects(bot_msg, info_type.split('-')[0]))  # subject entry
 
+@dp.message_handler(commands=['alarm'])
+async def tagi(message: types.Message):
+    Group_alarm = str(message.chat.id)+'.txt'
+    await bot.send_message(message.chat.id,tg.alarm(Group_alarm))
 @dp.message_handler()
 async def reg(message: types.Message):
     Group = str(message.chat.id)+'.txt' #Take name of Group file
