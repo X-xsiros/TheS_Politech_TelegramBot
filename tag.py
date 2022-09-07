@@ -5,4 +5,5 @@ def alarm(name):
     for i in Names:
         Trag = Trag +'@'+ i[0:-1]+ ' '
     return(Trag)
-    print(Trag)
+
+

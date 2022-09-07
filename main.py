@@ -55,7 +55,6 @@ async def reg(message: types.Message):
     Chat_Member_List = open(Group,'a+')  #Open group file or generate it
     Chat_Member_List.seek(0) #Go to start
     This_list= Chat_Member_List.readlines() # read file
-    print(This_list)
     if str(message.from_user.username)+'\n' in This_list: #If user in file, close it
         Chat_Member_List.close()
     else:
