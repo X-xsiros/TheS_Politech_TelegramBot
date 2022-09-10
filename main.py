@@ -4,12 +4,12 @@ import os
 from aiogram import Bot, Dispatcher, types, executor
 from dotenv import load_dotenv
 
-import keyboards as kb  # do your keyboards HERE!
-from tags_formation import alarm
+import data.keyboards as kb  # do your keyboards HERE!
+from data.db_session import global_init, create_session
+from data.groups import Groups
 
 if os.path.exists('.env'):
     load_dotenv('.env')  # call me if you don't have one
-
 
 BOT_KEY = os.getenv('API_TOKEN')
 
@@ -22,7 +22,15 @@ dp = Dispatcher(bot)
 async def send_menu(message: types.Message):
     """Main menu entry command and nothing else."""
 
-    await message.answer('Меню', reply_markup=kb.menu(message.message_id))
+    db_sess = create_session()
+    groups = [chat.group_chat_id for chat in db_sess.query(Groups).all()]
+
+    if str(message.chat.id) in groups:
+        await message.answer('В общих чатах эти команды недоступны, '
+                             'потому что для меня они всё равно что интимны.')
+    else:
+        await message.answer('Меню', reply_markup=kb.menu(message.message_id))
+    db_sess.commit()
 
 
 @dp.callback_query_handler()
@@ -52,8 +60,9 @@ async def subject_menu(callback_query: types.CallbackQuery):
 async def alarm_command(message: types.Message):
     """Just a command which doing that king of thing in chat: @all"""
 
-    group_alarm = str(message.chat.id) + '.txt'
-    await bot.send_message(message.chat.id, alarm(group_alarm))
+    db_sess = create_session()
+    group = db_sess.query(Groups).filter(Groups.group_chat_id == message.chat.id).first()
+    await bot.send_message(message.chat.id, group.members)
 
 
 @dp.message_handler()
@@ -62,16 +71,28 @@ async def usernames_capture(message: types.Message):
     then it makes or opens a new group usernames file, next it checks
     if the username is already in, if not the function write it down."""
 
-    group = str(message.chat.id) + '.txt'
-    chat_member_list = open(group, 'a+')
-    chat_member_list.seek(0)
-    this_list = chat_member_list.readlines()
-    if str(message.from_user.username) + '\n' in this_list:
-        chat_member_list.close()
-    else:
-        chat_member_list.write(str(message.from_user.username) + '\n')
-        chat_member_list.close()
+    db_sess = create_session()
+    try:
+        group = db_sess.query(Groups).filter(Groups.group_chat_id == message.chat.id).first()
+        if not group:
+            group = Groups(group_chat_id=message.chat.id)
+            db_sess.add(group)
+        if '@' + message.from_user.username + ' ' not in group.members and message.from_user.username != 'None':
+            group.members += '@' + message.from_user.username + ' '
+        elif message.from_user.username not in group.members:
+            await bot.send_message(message.chat.id, 'Пидор, быстро сука завел юзернэйм! АТОБАН')
+    except Exception as e:
+        print(e)
+    db_sess.commit()
+
+
+def db_connect():
+    """DataBase connection"""
+
+    db_name = 'db/db.sqlite'
+    global_init(db_name)
 
 
 if __name__ == '__main__':
+    db_connect()
     executor.start_polling(dp, skip_updates=True)

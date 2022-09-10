@@ -12,3 +12,5 @@ multidict==6.0.2
 python-dotenv==0.21.0
 pytz==2022.2.1
 yarl==1.8.1
+
+SQLAlchemy~=1.4.41
