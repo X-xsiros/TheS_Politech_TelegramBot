@@ -1,3 +1,4 @@
+import datetime
 import logging
 import os
 
@@ -16,6 +17,7 @@ if os.path.exists('.env'):
     load_dotenv('.env')  # call AlkoKovad if you don't have one
 
 BOT_KEY = os.getenv('API_TOKEN')
+STORAGE_ID = -1001461174439
 
 storage = MemoryStorage()
 logging.basicConfig(level=logging.INFO)
@@ -32,14 +34,18 @@ async def send_menu(message: types.Message):
     """Main menu entry command and nothing else."""
 
     db_sess = create_session()
-    groups = [chat.group_chat_id for chat in db_sess.query(Groups).all()]
+    group_ids = [chat.group_chat_id for chat in db_sess.query(Groups).all()]
 
-    if str(message.chat.id) in groups:
+    if str(message.chat.id) in group_ids:
         await message.answer('В общих чатах эти команды недоступны, '
                              'потому что для меня они всё равно что интимны.')
-    else:
+    elif int(message.chat.id) > 0:
         await message.answer('Меню', reply_markup=kb.menu(message.message_id))
-    db_sess.commit()
+    else:
+        group = Groups()
+        group.group_chat_id = message.chat.id
+        db_sess.add(group)
+        db_sess.commit()
 
 
 @dp.callback_query_handler()
@@ -70,7 +76,7 @@ async def subject_menu(callback_query: types.CallbackQuery):
 
             if 'upload' in info_type:
                 await bot.send_message(callback_query.from_user.id,
-                                       'Укажи дату в формате DD.MM.YY и приложи файлы')
+                                       'Укажи дату в формате YY-MM-DD и приложи файлы')
                 await HomeworkSendState.homework_files_state.set()
                 return  # upload homework entry
             if 'download' in info_type:
@@ -88,11 +94,35 @@ async def subject_menu(callback_query: types.CallbackQuery):
 
 @dp.message_handler(state=HomeworkSendState.homework_files_state)
 async def upload_homework(message: types.message, state: FSMContext):
+    db_sess = create_session()
+
     await state.update_data(homework=message)
     data = await state.get_data()
-    await bot.send_message(message.chat.id, f'{data["homework"]} вот твоя хуйня')
-    await bot.send_message(message.chat.id, f'{search_user_in_groups(data["homework"].from_user.username)} вот тебе сука')
-    await state.finish()
+    chat_id = search_user_in_groups(data["homework"].from_user.username)
+
+    homework = Homework()
+    homework.group_chat_id = chat_id
+    try:
+        deadline_date = datetime.datetime.strptime(data['homework'].text, '%Y-%m-%d')
+        homework.deadline = deadline_date
+    except Exception as e:
+        await bot.send_message(data['homework'].chat.id, f'Ошибка: {e}')
+
+    try:
+
+        if data['homework'].text is not None:
+            await bot.send_message(STORAGE_ID, data['homework'].text)
+
+        elif data['homework'].photo is not None:
+            await bot.send_photo(STORAGE_ID, caption=data['homework'].text, photo=data['homework'].photo[-1].file_id)
+
+        elif data['homework'].document is not None:
+            await bot.send_document(STORAGE_ID, caption=data['homework'].text,
+                                    document=data['homework'].document.file_id)
+
+        await state.finish()
+    except Exception as e:
+        print(f'error: {e}')
 
 
 @dp.message_handler(commands=['alarm'])
@@ -111,18 +141,12 @@ async def usernames_capture(message: types.Message):
     if the username is already in, if not the function write it down."""
 
     db_sess = create_session()
-    try:
+    if db_sess.query(Groups).filter(Groups.group_chat_id == message.chat.id).first():
         group = db_sess.query(Groups).filter(Groups.group_chat_id == message.chat.id).first()
-        if not group and message.chat.id != search_user_in_groups(message.from_user.username) and \
-                message.chat.id[0] == '-':
-            group = Groups(group_chat_id=message.chat.id)
-            db_sess.add(group)
         if '@' + message.from_user.username + ' ' not in group.members and message.from_user.username != 'None':
             group.members += '@' + message.from_user.username + ' '
         elif message.from_user.username not in group.members:
             await bot.send_message(message.chat.id, 'Пидор, быстро сука завел юзернэйм! АТОБАН')
-    except Exception as e:
-        print(e)
     db_sess.commit()
 
 

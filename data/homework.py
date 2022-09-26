@@ -10,6 +10,6 @@ class Homework(SqlAlchemyBase):
     group_chat_id = sqlalchemy.Column(sqlalchemy.String, sqlalchemy.ForeignKey('groups.group_chat_id'),
                                       primary_key=True)
     deadline = sqlalchemy.Column(sqlalchemy.Date)
-    directory_path = sqlalchemy.Column(sqlalchemy.String)
+    homework_id = sqlalchemy.Column(sqlalchemy.String)
 
     groups = orm.relation('Groups', back_populates='homework')
