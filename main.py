@@ -1,6 +1,6 @@
-import datetime
 import logging
 import os
+import datetime
 
 from aiogram import Bot, Dispatcher, types, executor
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
@@ -123,6 +123,30 @@ async def upload_homework(message: types.message, state: FSMContext):
         await state.finish()
     except Exception as e:
         print(f'error: {e}')
+
+
+@dp.message_handler(commands=['test'])
+async def test(message: types.Message):
+    await message.reply(message.text)
+
+
+@dp.message_handler(commands=['deadline'])
+async def deadline(message: types.Message):
+    db_sess = create_session()
+    tomorrow = datetime.date.today() + datetime.timedelta(days=1)
+    user = '@' + message.from_user.username
+
+    group = db_sess.query(Groups).filter(Groups.members.like(f'%{user}%')).first()
+
+    deadlines = db_sess.query(Homework).filter(
+        Homework.group_chat_id == group.group_chat_id, Homework.deadline == tomorrow).first()
+
+    if deadlines == None:
+        await bot.send_message(message.chat.id, f'Дедлайнов нет для группы:{group.group_chat_id}')
+    else:
+        await bot.send_message(message.chat.id, deadlines.deadline)
+
+    db_sess.commit()
 
 
 @dp.message_handler(commands=['alarm'])
