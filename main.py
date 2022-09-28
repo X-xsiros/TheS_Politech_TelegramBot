@@ -129,6 +129,19 @@ async def upload_homework(message: types.message, state: FSMContext):
 async def test(message: types.Message):
     await message.reply(message.text)
 
+@dp.message_handler(commands=['adddeadline'])
+async def adddeadline(message: types.Message):
+    db_sess =create_session()
+    user = '@' + message.from_user.username
+    await bot.send_message(message.chat.id,'Задайте дедлайн в формате YYYY-MM-DD')
+    grid = db_sess.query(Groups).filter(Groups.members.like(f'%{user}%')).first()
+    try:
+        txt = message.text.split('-')
+        d1 = Homework(group_chat_id= grid,deadline= txt,homework_id= '55555')
+        db_sess.add(d1)
+    except Exception as e:
+        bot.send_message(message.chat.id,f'Ошибка:{e}')
+    db_sess.commit()
 
 @dp.message_handler(commands=['deadline'])
 async def deadline(message: types.Message):
@@ -139,12 +152,16 @@ async def deadline(message: types.Message):
     group = db_sess.query(Groups).filter(Groups.members.like(f'%{user}%')).first()
 
     deadlines = db_sess.query(Homework).filter(
-        Homework.group_chat_id == group.group_chat_id, Homework.deadline == tomorrow).first()
-
-    if deadlines == None:
+        Homework.group_chat_id == group.group_chat_id, Homework.deadline == tomorrow).all()
+    print(deadlines[1])
+    if deadlines == []:
         await bot.send_message(message.chat.id, f'Дедлайнов нет для группы:{group.group_chat_id}')
     else:
-        await bot.send_message(message.chat.id, deadlines.deadline)
+        await bot.send_message(message.chat.id,'Вот тебе твои дедлайны, возможно пора готовить сапоги в армию')
+        deadlines = db_sess.query(Homework).filter(
+            Homework.group_chat_id == group.group_chat_id, Homework.deadline == tomorrow)
+        for c in deadlines:
+            await bot.send_message(message.chat.id, f'{c.deadline},{c.homework_id}')
 
     db_sess.commit()
 
