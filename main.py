@@ -12,7 +12,6 @@ import data.keyboards as kb  # do your keyboards HERE!
 from data.db_session import global_init, create_session
 from data.groups import Groups
 from data.homework import Homework
-from os import urandom
 
 if os.path.exists('.env'):
     load_dotenv('.env')  # call AlkoKovad if you don't have one
@@ -28,6 +27,8 @@ dp = Dispatcher(bot, storage=storage)
 
 class HomeworkSendState(StatesGroup):
     homework_files_state = State()
+
+
 class DeadlineWriteState(StatesGroup):
     deadline_date = State()
     deadline_text = State()
@@ -142,9 +143,8 @@ async def alldeadlines(message: types.Message):
     else:
         deadlines = db_sess.query(Homework).filter(
             Homework.group_chat_id == group.group_chat_id)
-        await bot.send_message(message.chat.id,'Дедлыйны:')
+        await bot.send_message(message.chat.id, 'Дедлыйны:')
         for c in deadlines:
-
             await bot.send_message(message.chat.id,
                                    f'\n Дата {c.deadline}\n Id Дз {c.homework_id}\n Суть  {c.some_text}')
 
@@ -153,31 +153,33 @@ async def alldeadlines(message: types.Message):
 
 @dp.message_handler(commands=['adddeadline'])
 async def adddeadline(message: types.Message):
-    await bot.send_message(message.chat.id,'Введи дедлайн в формате YYYY-MM-DD')
+    await bot.send_message(message.chat.id, 'Введи дедлайн в формате YYYY-MM-DD')
     await DeadlineWriteState.deadline_date.set()
+
 
 @dp.message_handler(state=DeadlineWriteState.deadline_date)
 async def get_ddate(message: types.Message, state: FSMContext):
-    if len(message.text) == 10 and type( int(message.text.split('-')[0])) == int:
-        await state.update_data(deadline_date = message.text)
+    if len(message.text) == 10 and type(int(message.text.split('-')[0])) == int:
+        await state.update_data(deadline_date=message.text)
         await bot.send_message(message.chat.id, 'Введи суть деделайна')
         await DeadlineWriteState.deadline_text.set()
     else:
         await message.reply(f"Неверный формат{len(message.text.split('-'))}{message.text.split('-')}")
 
+
 @dp.message_handler(state=DeadlineWriteState.deadline_text)
 async def get_dtext(message: types.Message, state: FSMContext):
-    await state.update_data(deadline_text = message.text)
+    await state.update_data(deadline_text=message.text)
     data = await state.get_data()
     db_sess = create_session()
     user = '@' + message.from_user.username
     group = db_sess.query(Groups).filter(Groups.members.like(f'%{user}%')).first()
     deadline_date = datetime.datetime.strptime(data['deadline_date'], '%Y-%m-%d')
     try:
-        db_sess.add(Homework(group_chat_id = group.group_chat_id,deadline = deadline_date, homework_id = os.urandom(5) ,
-                             some_text = data['deadline_text']))
+        db_sess.add(Homework(group_chat_id=group.group_chat_id, deadline=deadline_date, homework_id=os.urandom(5),
+                             some_text=data['deadline_text']))
     except Exception as e:
-        await message.reply(e)
+        await message.reply( f'{e}')
     await message.reply('Дедлайн успешно создан')
     db_sess.commit()
     await state.finish()
@@ -200,10 +202,10 @@ async def deadline(message: types.Message):
         deadlines = db_sess.query(Homework).filter(
             Homework.group_chat_id == group.group_chat_id, Homework.deadline == tomorrow)
         for c in deadlines:
-            await bot.send_message(message.chat.id, f'Дедлайны на завтра\n Дата {c.deadline}\n Id Дз {c.homework_id}\n Суть  {c.some_text}')
+            await bot.send_message(message.chat.id,
+                                   f'Дедлайны на завтра\n Дата {c.deadline}\n Id Дз {c.homework_id}\n Суть  {c.some_text}')
 
     db_sess.commit()
-
 
 
 @dp.message_handler(commands=['alarm'])
