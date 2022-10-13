@@ -114,13 +114,14 @@ async def upload_homework(message: types.message, state: FSMContext):
     await HomeworkSendState.homework_files_state2.set()
 
 
-@dp.message_handler(state=HomeworkSendState.homework_files_state2)
+@dp.message_handler(state=HomeworkSendState.homework_files_state2, content_types=['text','photo','document'])
 async def upload_homework2(message: types.message, state: FSMContext):
     db_sess = create_session()
     user = '@' + message.from_user.username
     group = db_sess.query(Groups).filter(Groups.members.like(f'%{user}%')).first()
     await state.update_data(homework=message)
     data = await state.get_data()
+    print(data['homework'])
     deadline_date = datetime.datetime.strptime(data['deadline_date'], '%Y-%m-%d')
     try:
 
@@ -134,16 +135,21 @@ async def upload_homework2(message: types.message, state: FSMContext):
             except Exception as e:
                 print(f'{e}')
         elif data['homework'].photo is not None:
-            await bot.send_photo(STORAGE_ID, caption=data['homework'].text, photo=data['homework'].photo[-1].file_id)
+            msg = await bot.send_photo(STORAGE_ID,  photo=data['homework'].photo[-1].file_id, caption= deadline_date)
+            db_sess.add(
+                Homework(group_chat_id=group.group_chat_id, deadline=deadline_date, homework_id=msg["message_id"],
+                         some_text='Смотри дз'))
 
         elif data['homework'].document is not None:
-            await bot.send_document(STORAGE_ID, caption=data['homework'].text,
-                                    document=data['homework'].document.file_id)
-
+            msg = await bot.send_document(STORAGE_ID, document=data['homework'].document.file_id, caption=deadline_date)
+            db_sess.add(
+                Homework(group_chat_id=group.group_chat_id, deadline=deadline_date, homework_id=msg["message_id"],
+                         some_text='Смотри дз'))
+        print(data['homework'].document)
         await state.finish()
         db_sess.commit()
     except Exception as e:
-        print(f'error: {e}')
+        print(f"error: {e}")
 
 
 @dp.message_handler(commands=['alldeadlines'])
