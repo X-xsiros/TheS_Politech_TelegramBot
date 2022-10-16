@@ -28,7 +28,7 @@ dp = Dispatcher(bot, storage=storage)
 class HomeworkSendState(StatesGroup):
     homework_files_state = State()
     homework_files_state2 = State()
-
+    homework_files_state_download = State()
 
 class DeadlineWriteState(StatesGroup):
     deadline_date = State()
@@ -97,19 +97,16 @@ async def subject_menu(callback_query: types.CallbackQuery):
     await bot.send_message(callback_query.from_user.id, 'Выбери предмет',
                            reply_markup=kb.subjects(bot_msg, info_type.split('-')[0]))  # subject entry
 
+@dp.message_handler(state= HomeworkSendState.homework_files_state_download)
+
 
 @dp.message_handler(state=HomeworkSendState.homework_files_state)
 async def upload_homework(message: types.message, state: FSMContext):
 
-
-    await state.update_data(homework_date = message)
-    data = await state.get_data()
-
-
     try:
-        await state.update_data(deadline_date=data['homework_date'].text)
+        await state.update_data(deadline_date=message.text)
     except Exception as e:
-        await bot.send_message(data['homework_date'].chat.id, f'Ошибка: {e}')
+        await bot.send_message(message.chat.id, f'Ошибка: {e}')
     await bot.send_message(message.chat.id,'Отправь файлы')
     await HomeworkSendState.homework_files_state2.set()
 
@@ -119,33 +116,29 @@ async def upload_homework2(message: types.message, state: FSMContext):
     db_sess = create_session()
     user = '@' + message.from_user.username
     group = db_sess.query(Groups).filter(Groups.members.like(f'%{user}%')).first()
+
     await state.update_data(homework=message)
     data = await state.get_data()
-    print(data['homework'])
     deadline_date = datetime.datetime.strptime(data['deadline_date'], '%Y-%m-%d')
+
     try:
 
-        if data['homework'].text is not None:
+        if data['homework'].document is not None:
+            msg = await bot.send_document(STORAGE_ID, document=data['homework'].document.file_id, caption=deadline_date)
+            db_sess.add(
+                Homework(group_chat_id=group.group_chat_id, deadline=deadline_date, homework_id=msg["message_id"],
+                         some_text='Смотри дз'))
+        elif data['homework'].text is not None:
             msg = await bot.send_message(STORAGE_ID, f"{deadline_date},{ data['homework'].text},")
-            print(msg["message_id"])
-            try:
-                db_sess.add(Homework(group_chat_id=group.group_chat_id, deadline=deadline_date, homework_id= msg["message_id"],
+            db_sess.add(Homework(group_chat_id=group.group_chat_id, deadline=deadline_date, homework_id= msg["message_id"],
                                      some_text= 'Смотри дз'))
 
-            except Exception as e:
-                print(f'{e}')
         elif data['homework'].photo is not None:
             msg = await bot.send_photo(STORAGE_ID,  photo=data['homework'].photo[-1].file_id, caption= deadline_date)
             db_sess.add(
                 Homework(group_chat_id=group.group_chat_id, deadline=deadline_date, homework_id=msg["message_id"],
                          some_text='Смотри дз'))
 
-        elif data['homework'].document is not None:
-            msg = await bot.send_document(STORAGE_ID, document=data['homework'].document.file_id, caption=deadline_date)
-            db_sess.add(
-                Homework(group_chat_id=group.group_chat_id, deadline=deadline_date, homework_id=msg["message_id"],
-                         some_text='Смотри дз'))
-        print(data['homework'].document)
         await state.finish()
         db_sess.commit()
     except Exception as e:
