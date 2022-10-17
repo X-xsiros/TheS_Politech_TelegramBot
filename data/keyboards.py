@@ -31,6 +31,6 @@ def up_down__load_files(message_id, info_type):
 
 
 def homework_for_dates(message_id, info_type, dates):
-    date_btns = [InlineKeyboardButton(f'{date}', callback_data=f'{info_type}-{date} {message_id}')
+    date_btns = [InlineKeyboardButton(f'{date}', callback_data=f'{info_type}-get-{date} {message_id}')
                  for date in dates]
     return InlineKeyboardMarkup(row_width=1).add(*[btn for btn in date_btns])
