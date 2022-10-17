@@ -7,6 +7,7 @@ from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from dotenv import load_dotenv
+from sqlalchemy.orm import Session
 
 import data.keyboards as kb  # do your keyboards HERE!
 from data.db_session import global_init, create_session
@@ -60,9 +61,10 @@ async def subject_menu(callback_query: types.CallbackQuery):
     There is a data format for reply markups which looks like:
     Section-subject-kind_of_docs"""
 
-    db_sess = create_session()
+    db_sess: Session = create_session()
     homework_list = db_sess.query(Homework).all()
     dates = [homework.deadline for homework in homework_list]
+
 
     info_type, bot_msg = callback_query.data.split()[0], int(callback_query.data.split()[1]) + 1
     # this string could fuck up our bot one day, search "last_message" or smth like that command plz...
@@ -72,12 +74,29 @@ async def subject_menu(callback_query: types.CallbackQuery):
 
     if info_type == 'menu':
         await bot.send_message(callback_query.from_user.id, 'Меню', reply_markup=kb.menu(bot_msg))
+
         return  # menu exit
+    if 'get' in info_type:
+
+        db_sess = create_session()
+        deaddata = info_type[-10:]
+
+
+        user = '@' + callback_query.from_user.username
+        group = db_sess.query(Groups).filter(Groups.members.like(f'%{user}%')).first()
+        homework_download = db_sess.query(Homework).filter(Homework.group_chat_id == group.group_chat_id,Homework.deadline == deaddata)
+
+        for i in homework_download:
+            await bot.forward_message(callback_query.from_user.id,STORAGE_ID,i.homework_id)
+
+        db_sess.commit()
+        return
     if 'docs-' in info_type:
         if len(info_type.split('-')) == 3:
             await bot.send_message(callback_query.from_user.id, 'Выбери действие',
                                    reply_markup=kb.up_down__load_files(bot_msg, info_type))
             return
+
         if len(info_type.split('-')) == 4:
 
             if 'upload' in info_type:
@@ -88,6 +107,7 @@ async def subject_menu(callback_query: types.CallbackQuery):
             if 'download' in info_type:
                 await bot.send_message(callback_query.from_user.id, 'Ваше ДЗ по дедлайнам хозяин',
                                        reply_markup=kb.homework_for_dates(bot_msg, info_type, dates))
+
                 return  # download homework entry
 
         await bot.send_message(callback_query.from_user.id, 'Выбери материалы',
@@ -96,8 +116,6 @@ async def subject_menu(callback_query: types.CallbackQuery):
         return  # materials section entry
     await bot.send_message(callback_query.from_user.id, 'Выбери предмет',
                            reply_markup=kb.subjects(bot_msg, info_type.split('-')[0]))  # subject entry
-
-@dp.message_handler(state= HomeworkSendState.homework_files_state_download)
 
 
 @dp.message_handler(state=HomeworkSendState.homework_files_state)
@@ -244,7 +262,7 @@ async def usernames_capture(message: types.Message):
         group = db_sess.query(Groups).filter(Groups.group_chat_id == message.chat.id).first()
         if '@' + message.from_user.username + ' ' not in group.members and message.from_user.username != 'None':
             group.members += '@' + message.from_user.username + ' '
-        elif message.from_user.username not in group.members:
+        elif message.from_user.username == 'None':
             await bot.send_message(message.chat.id, 'Пидор, быстро сука завел юзернэйм! АТОБАН')
     db_sess.commit()
 
