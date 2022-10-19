@@ -72,7 +72,7 @@ async def subject_menu(callback_query: types.CallbackQuery):
 
     info_type, bot_msg = callback_query.data.split()[0], int(callback_query.data.split()[1]) + 1
     # this string could fuck up our bot one day, search "last_message" or smth like that command plz...
-
+    print(bot_msg,callback_query.from_user.username)
     await bot.delete_message(chat_id=callback_query.from_user.id, message_id=bot_msg)
     await bot.answer_callback_query(callback_query.id)  # have no fucking clue what is this for
 
@@ -163,9 +163,9 @@ async def upload_homework2(message: types.message, state: FSMContext):
 
         await state.finish()
         db_sess.commit()
-        await bot.send_message(message.cat.id,'успешно добавлено')
+        await bot.send_message(message.chat.id,'успешно добавлено')
     except Exception as e:
-        await bot.send_message(message.chat.id,'Ошибка, сообщите админу ')
+        await bot.send_message(message.chat.id,f'Ошибка, сообщите админу {e}')
     return
 
 @dp.message_handler(commands=['alldeadlines'])
@@ -295,7 +295,13 @@ async def reminder(dp):
             for c in deadlines:
                 await dp.bot.send_message(group.group_chat_id,
                                        f'Дедлайны на завтра\n Дата {c.deadline}\n Id Дз {c.homework_id}\n Суть  {c.some_text}')
-    db_sess.commit()
+    houmwork = db_sess.query(Homework).filter(Homework.deadline < datetime.date.today()).all()
+    if houmwork != []:
+        houmwork = db_sess.query(Homework).filter(Homework.deadline < datetime.date.today())
+        for houm in houmwork:
+            await dp.bot.delete_message(chat_id= STORAGE_ID,message_id=houm.homework_id)
+            db_sess.delete(houm)
+        db_sess.commit()
 
 scheduler.add_job(reminder, "cron", hour=12, args=(dp,))
 
