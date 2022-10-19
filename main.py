@@ -1,6 +1,7 @@
 import logging
 import os
 import datetime
+import time
 
 from aiogram import Bot, Dispatcher, types, executor
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
@@ -8,6 +9,7 @@ from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from dotenv import load_dotenv
 from sqlalchemy.orm import Session
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 import data.keyboards as kb  # do your keyboards HERE!
 from data.db_session import global_init, create_session
@@ -24,7 +26,7 @@ storage = MemoryStorage()
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_KEY)
 dp = Dispatcher(bot, storage=storage)
-
+scheduler = AsyncIOScheduler()
 
 class HomeworkSendState(StatesGroup):
     homework_files_state = State()
@@ -34,6 +36,8 @@ class HomeworkSendState(StatesGroup):
 class DeadlineWriteState(StatesGroup):
     deadline_date = State()
     deadline_text = State()
+
+scheduler.start()
 
 
 @dp.message_handler(commands=['start', 'menu'])
@@ -101,7 +105,7 @@ async def subject_menu(callback_query: types.CallbackQuery):
 
             if 'upload' in info_type:
                 await bot.send_message(callback_query.from_user.id,
-                                       'Укажи дату в формате YY-MM-DD и приложи файлы')
+                                       'Укажи дату в формате YYYY-MM-DD и приложи файлы')
                 await HomeworkSendState.homework_files_state.set()
                 return  # upload homework entry
             if 'download' in info_type:
@@ -120,13 +124,13 @@ async def subject_menu(callback_query: types.CallbackQuery):
 
 @dp.message_handler(state=HomeworkSendState.homework_files_state)
 async def upload_homework(message: types.message, state: FSMContext):
-
-    try:
+    if len(message.text) == 10 and type(int(message.text.split('-')[0])) == int:
         await state.update_data(deadline_date=message.text)
-    except Exception as e:
-        await bot.send_message(message.chat.id, f'Ошибка: {e}')
-    await bot.send_message(message.chat.id,'Отправь файлы')
-    await HomeworkSendState.homework_files_state2.set()
+        await bot.send_message(message.chat.id, 'Отправь файлы')
+        await HomeworkSendState.homework_files_state2.set()
+    else:
+        await message.reply(f"Неверный формат{len(message.text.split('-'))}{message.text.split('-')}")
+
 
 
 @dp.message_handler(state=HomeworkSendState.homework_files_state2, content_types=['text','photo','document'])
@@ -159,9 +163,10 @@ async def upload_homework2(message: types.message, state: FSMContext):
 
         await state.finish()
         db_sess.commit()
+        await bot.send_message(message.cat.id,'успешно добавлено')
     except Exception as e:
-        print(f"error: {e}")
-
+        await bot.send_message(message.chat.id,'Ошибка, сообщите админу ')
+    return
 
 @dp.message_handler(commands=['alldeadlines'])
 async def alldeadlines(message: types.Message):
@@ -208,8 +213,9 @@ async def get_dtext(message: types.Message, state: FSMContext):
     user = '@' + message.from_user.username
     group = db_sess.query(Groups).filter(Groups.members.like(f'%{user}%')).first()
     deadline_date = datetime.datetime.strptime(data['deadline_date'], '%Y-%m-%d')
+    msg = await bot.send_message(STORAGE_ID, f"{data['deadline_text']},")
     try:
-        db_sess.add(Homework(group_chat_id=group.group_chat_id, deadline=deadline_date, homework_id=os.urandom(5),
+        db_sess.add(Homework(group_chat_id=group.group_chat_id, deadline=deadline_date, homework_id=msg['message_id'],
                              some_text=data['deadline_text']))
         print(type(group.group_chat_id), type(deadline_date), type(os.urandom(5)))
     except Exception as e:
@@ -273,6 +279,25 @@ def search_user_in_groups(username):
     for group in groups:
         if username in group.members:
             return group.group_chat_id
+
+async def reminder(dp):
+    db_sess = create_session()
+    tomorrow = datetime.date.today() + datetime.timedelta(days=1)
+    groups = db_sess.query(Groups)
+    for group in groups:
+        deadlines = db_sess.query(Homework).filter(
+            Homework.group_chat_id == group.group_chat_id, Homework.deadline == tomorrow).all()
+        if deadlines == []:
+            await dp.bot.send_message(group.group_chat_id, f'Дедлайнов на завтра нет для группы:{group.group_chat_id}')
+        else:
+            deadlines = db_sess.query(Homework).filter(
+                Homework.group_chat_id == group.group_chat_id, Homework.deadline == tomorrow)
+            for c in deadlines:
+                await dp.bot.send_message(group.group_chat_id,
+                                       f'Дедлайны на завтра\n Дата {c.deadline}\n Id Дз {c.homework_id}\n Суть  {c.some_text}')
+    db_sess.commit()
+
+scheduler.add_job(reminder, "cron", hour=12, args=(dp,))
 
 
 def db_connect():
