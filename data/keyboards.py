@@ -34,3 +34,17 @@ def homework_for_dates(message_id, info_type, dates):
     date_btns = [InlineKeyboardButton(f'{date}', callback_data=f'{info_type}-get-{date} {message_id}')
                  for date in dates]
     return InlineKeyboardMarkup(row_width=1).add(*[btn for btn in date_btns])
+
+def new_menu():
+    materials = InlineKeyboardButton('Материалы',callback_data= 'materials')
+    return InlineKeyboardMarkup(row_width=1).add(materials)
+
+def new_subjects():
+    physics_btn = InlineKeyboardButton('Физика', callback_data='phys')
+    math_btn = InlineKeyboardButton('Вышмат', callback_data='math')
+    programming_btn = InlineKeyboardButton('Алгпрога', callback_data=' prog')
+    return_btn = InlineKeyboardButton('Меню', callback_data='menu')
+    return InlineKeyboardMarkup(row_width=1).add(physics_btn, math_btn, programming_btn, return_btn)
+def new_m_b_subject(info):
+    homework_btn = InlineKeyboardButton('Д/З', callback_data=f'{info} homework')
+    return InlineKeyboardMarkup(row_width=1).add(homework_btn)

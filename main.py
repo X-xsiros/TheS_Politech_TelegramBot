@@ -1,7 +1,7 @@
 import logging
 import os
 import datetime
-import time
+import threading
 
 from aiogram import Bot, Dispatcher, types, executor
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
@@ -22,20 +22,24 @@ if os.path.exists('.env'):
 BOT_KEY = os.getenv('API_TOKEN')
 STORAGE_ID = -1001461174439
 
+lock = threading.Lock()
 storage = MemoryStorage()
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_KEY)
 dp = Dispatcher(bot, storage=storage)
 scheduler = AsyncIOScheduler()
 
+
 class HomeworkSendState(StatesGroup):
     homework_files_state = State()
     homework_files_state2 = State()
     homework_files_state_download = State()
 
+
 class DeadlineWriteState(StatesGroup):
     deadline_date = State()
     deadline_text = State()
+
 
 scheduler.start()
 
@@ -69,10 +73,8 @@ async def subject_menu(callback_query: types.CallbackQuery):
     homework_list = db_sess.query(Homework).all()
     dates = [homework.deadline for homework in homework_list]
 
-
     info_type, bot_msg = callback_query.data.split()[0], int(callback_query.data.split()[1]) + 1
     # this string could fuck up our bot one day, search "last_message" or smth like that command plz...
-    print(bot_msg,callback_query.from_user.username)
     await bot.delete_message(chat_id=callback_query.from_user.id, message_id=bot_msg)
     await bot.answer_callback_query(callback_query.id)  # have no fucking clue what is this for
 
@@ -85,13 +87,13 @@ async def subject_menu(callback_query: types.CallbackQuery):
         db_sess = create_session()
         deaddata = info_type[-10:]
 
-
         user = '@' + callback_query.from_user.username
         group = db_sess.query(Groups).filter(Groups.members.like(f'%{user}%')).first()
-        homework_download = db_sess.query(Homework).filter(Homework.group_chat_id == group.group_chat_id,Homework.deadline == deaddata)
+        homework_download = db_sess.query(Homework).filter(Homework.group_chat_id == group.group_chat_id,
+                                                           Homework.deadline == deaddata)
 
         for i in homework_download:
-            await bot.forward_message(callback_query.from_user.id,STORAGE_ID,i.homework_id)
+            await bot.forward_message(callback_query.from_user.id, STORAGE_ID, i.homework_id)
 
         db_sess.commit()
         return
@@ -132,8 +134,7 @@ async def upload_homework(message: types.message, state: FSMContext):
         await message.reply(f"Неверный формат{len(message.text.split('-'))}{message.text.split('-')}")
 
 
-
-@dp.message_handler(state=HomeworkSendState.homework_files_state2, content_types=['text','photo','document'])
+@dp.message_handler(state=HomeworkSendState.homework_files_state2, content_types=['text', 'photo', 'document'])
 async def upload_homework2(message: types.message, state: FSMContext):
     db_sess = create_session()
     user = '@' + message.from_user.username
@@ -151,22 +152,24 @@ async def upload_homework2(message: types.message, state: FSMContext):
                 Homework(group_chat_id=group.group_chat_id, deadline=deadline_date, homework_id=msg["message_id"],
                          some_text='Смотри дз'))
         elif data['homework'].text is not None:
-            msg = await bot.send_message(STORAGE_ID, f"{deadline_date},{ data['homework'].text},")
-            db_sess.add(Homework(group_chat_id=group.group_chat_id, deadline=deadline_date, homework_id= msg["message_id"],
-                                     some_text= 'Смотри дз'))
+            msg = await bot.send_message(STORAGE_ID, f"{deadline_date},{data['homework'].text},")
+            db_sess.add(
+                Homework(group_chat_id=group.group_chat_id, deadline=deadline_date, homework_id=msg["message_id"],
+                         some_text='Смотри дз'))
 
         elif data['homework'].photo is not None:
-            msg = await bot.send_photo(STORAGE_ID,  photo=data['homework'].photo[-1].file_id, caption= deadline_date)
+            msg = await bot.send_photo(STORAGE_ID, photo=data['homework'].photo[-1].file_id, caption=deadline_date)
             db_sess.add(
                 Homework(group_chat_id=group.group_chat_id, deadline=deadline_date, homework_id=msg["message_id"],
                          some_text='Смотри дз'))
 
         await state.finish()
         db_sess.commit()
-        await bot.send_message(message.chat.id,'успешно добавлено')
+        await bot.send_message(message.chat.id, 'успешно добавлено')
     except Exception as e:
-        await bot.send_message(message.chat.id,f'Ошибка, сообщите админу {e}')
+        await bot.send_message(message.chat.id, f'Ошибка, сообщите админу {e}')
     return
+
 
 @dp.message_handler(commands=['alldeadlines'])
 async def alldeadlines(message: types.Message):
@@ -213,7 +216,7 @@ async def get_dtext(message: types.Message, state: FSMContext):
     user = '@' + message.from_user.username
     group = db_sess.query(Groups).filter(Groups.members.like(f'%{user}%')).first()
     deadline_date = datetime.datetime.strptime(data['deadline_date'], '%Y-%m-%d')
-    msg = await bot.send_message(STORAGE_ID, f"{data['deadline_text']},")
+    msg = await bot.send_message(STORAGE_ID, f"{data['deadline_text']}")
     try:
         db_sess.add(Homework(group_chat_id=group.group_chat_id, deadline=deadline_date, homework_id=msg['message_id'],
                              some_text=data['deadline_text']))
@@ -280,6 +283,7 @@ def search_user_in_groups(username):
         if username in group.members:
             return group.group_chat_id
 
+
 async def reminder(dp):
     db_sess = create_session()
     tomorrow = datetime.date.today() + datetime.timedelta(days=1)
@@ -294,14 +298,15 @@ async def reminder(dp):
                 Homework.group_chat_id == group.group_chat_id, Homework.deadline == tomorrow)
             for c in deadlines:
                 await dp.bot.send_message(group.group_chat_id,
-                                       f'Дедлайны на завтра\n Дата {c.deadline}\n Id Дз {c.homework_id}\n Суть  {c.some_text}')
+                                          f'Дедлайны на завтра\n Дата {c.deadline}\n Id Дз {c.homework_id}\n Суть  {c.some_text}')
     houmwork = db_sess.query(Homework).filter(Homework.deadline < datetime.date.today()).all()
     if houmwork != []:
         houmwork = db_sess.query(Homework).filter(Homework.deadline < datetime.date.today())
         for houm in houmwork:
-            await dp.bot.delete_message(chat_id= STORAGE_ID,message_id=houm.homework_id)
+            await dp.bot.delete_message(chat_id=STORAGE_ID, message_id=houm.homework_id)
             db_sess.delete(houm)
         db_sess.commit()
+
 
 scheduler.add_job(reminder, "cron", hour=12, args=(dp,))
 
