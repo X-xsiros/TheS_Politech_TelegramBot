@@ -2,6 +2,7 @@ import logging
 import os
 import datetime
 import threading
+import time
 
 from aiogram import Bot, Dispatcher, types, executor
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
@@ -40,10 +41,6 @@ class DeadlineWriteState(StatesGroup):
     deadline_date = State()
     deadline_text = State()
 
-
-scheduler.start()
-
-
 @dp.message_handler(commands=['start', 'menu'])
 async def send_menu(message: types.Message):
     """Main menu entry command and nothing else."""
@@ -55,7 +52,7 @@ async def send_menu(message: types.Message):
         await message.answer('В общих чатах эти команды недоступны, '
                              'потому что для меня они всё равно что интимны.')
     elif int(message.chat.id) > 0:
-        await message.answer('Меню', reply_markup=kb.menu(message.message_id))
+        await message.answer('Меню', reply_markup=kb.menu(message.message_id,message.chat.id))
     else:
         group = Groups()
         group.group_chat_id = message.chat.id
@@ -73,13 +70,13 @@ async def subject_menu(callback_query: types.CallbackQuery):
     homework_list = db_sess.query(Homework).all()
     dates = [homework.deadline for homework in homework_list]
 
-    info_type, bot_msg = callback_query.data.split()[0], int(callback_query.data.split()[1]) + 1
+    info_type, bot_msg, chat_id = callback_query.data.split()[0], int(callback_query.data.split()[1]) + 1,int(callback_query.data.split()[2])
     # this string could fuck up our bot one day, search "last_message" or smth like that command plz...
-    await bot.delete_message(chat_id=callback_query.from_user.id, message_id=bot_msg)
+    await bot.delete_message(chat_id=chat_id, message_id=bot_msg)
     await bot.answer_callback_query(callback_query.id)  # have no fucking clue what is this for
 
     if info_type == 'menu':
-        await bot.send_message(callback_query.from_user.id, 'Меню', reply_markup=kb.menu(bot_msg))
+        await bot.send_message(chat_id, 'Меню', reply_markup=kb.menu(bot_msg,chat_id))
 
         return  # menu exit
     if 'get' in info_type:
@@ -93,37 +90,36 @@ async def subject_menu(callback_query: types.CallbackQuery):
                                                            Homework.deadline == deaddata)
 
         for i in homework_download:
-            await bot.forward_message(callback_query.from_user.id, STORAGE_ID, i.homework_id)
+            await bot.forward_message(chat_id, STORAGE_ID, i.homework_id)
 
         db_sess.commit()
         return
     if 'docs-' in info_type:
         if len(info_type.split('-')) == 3:
-            await bot.send_message(callback_query.from_user.id, 'Выбери действие',
-                                   reply_markup=kb.up_down__load_files(bot_msg, info_type))
+            await bot.send_message(chat_id, 'Выбери действие',
+                                   reply_markup=kb.up_down__load_files(bot_msg, info_type,chat_id))
             return
 
         if len(info_type.split('-')) == 4:
 
             if 'upload' in info_type:
-                await bot.send_message(callback_query.from_user.id,
+                await bot.send_message(chat_id,
                                        'Укажи дату в формате YYYY-MM-DD и приложи файлы')
                 await HomeworkSendState.homework_files_state.set()
                 return  # upload homework entry
             if 'download' in info_type:
-                await bot.send_message(callback_query.from_user.id, 'Ваше ДЗ по дедлайнам хозяин',
-                                       reply_markup=kb.homework_for_dates(bot_msg, info_type, dates))
+                await bot.send_message(chat_id, 'Ваше ДЗ по дедлайнам хозяин',
+                                       reply_markup=kb.homework_for_dates(bot_msg, info_type, dates,chat_id))
 
                 return  # download homework entry
 
-        await bot.send_message(callback_query.from_user.id, 'Выбери материалы',
-                               reply_markup=kb.materials_by_subject(bot_msg, info_type))
+        await bot.send_message(chat_id, 'Выбери материалы',
+                               reply_markup=kb.materials_by_subject(bot_msg, info_type,chat_id))
 
         return  # materials section entry
-    await bot.send_message(callback_query.from_user.id, 'Выбери предмет',
-                           reply_markup=kb.subjects(bot_msg, info_type.split('-')[0]))  # subject entry
-
-
+    await bot.send_message(chat_id, 'Выбери предмет',
+                           reply_markup=kb.subjects(bot_msg, info_type.split('-')[0],chat_id))  # subject entry
+#---------------------------------------------------------------------------------------------------------------------------------------------------
 @dp.message_handler(state=HomeworkSendState.homework_files_state)
 async def upload_homework(message: types.message, state: FSMContext):
     if len(message.text) == 10 and type(int(message.text.split('-')[0])) == int:
