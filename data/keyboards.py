@@ -6,7 +6,7 @@ def menu(message_id,chat_id):
     homework_btn = InlineKeyboardButton('Домашка', callback_data=f'topical_homework {message_id} {chat_id}')
     return InlineKeyboardMarkup(row_width=1).add(docs_btn)
 
-
+#sfsf
 def subjects(message_id, info_type,chat_id):
     physics_btn = InlineKeyboardButton('Физика', callback_data=f'{info_type}-physics {message_id} {chat_id}')
     math_btn = InlineKeyboardButton('Вышмат', callback_data=f'{info_type}-math {message_id} {chat_id}')
