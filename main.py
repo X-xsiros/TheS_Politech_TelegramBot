@@ -75,7 +75,7 @@ async def send_menu(message: types.Message):
         group = Groups()
         group.group_chat_id = message.chat.id
         db_sess.add(group)
-        await bot.send_message(message.chat.id,'Обновления: Исправлены критические ошибки \n ВНИМАНИЕ всем нужно заново авторизоватся')
+        await bot.send_message(message.chat.id,'Глобальное обновление: ЭЛЕКТРОННАЯ ПОСЕЩАЕМОСТЬ. \n Теперь бот может сам вести посещаемость в вашей группе, если у нее указан номер, подробнее у @xxsiros.\n До 1 сенятбря функция не проверяет Локацию по настоящему чтобы вы могли провести тесты. 1 числа все будет сброшено \n ВНИМАНИЕ всем нужно заново авторизоватся')
         db_sess.commit()
 
 @dp.message_handler(commands=['cat'])
@@ -111,7 +111,7 @@ async def subject_menu(callback_query: types.CallbackQuery,state: FSMContext):
 
     info_type, bot_msg = callback_query.data.split()[0], int(callback_query.data.split()[1]) + 1
     # this string could fuck up our bot one day, search "last_message" or smth like that command plz...
-    await bot.delete_message(chat_id=callback_query.from_user.id, message_id=bot_msg)
+    #await bot.delete_message(chat_id=callback_query.from_user.id, message_id=bot_msg)
     await bot.answer_callback_query(callback_query.id)  # have no fucking clue what is this for
 
     if info_type == 'menu':
@@ -258,8 +258,19 @@ async def subject_menu(callback_query: types.CallbackQuery,state: FSMContext):
     await bot.send_message(callback_query.from_user.id, 'Выбери предмет',
                            reply_markup=kb.subjects(bot_msg, info_type.split('-')[0],subjects))  # subject entry
 
+@dp.message_handler(commands=['attendance'])
+async def sendatt(message: types.Message):
+    db_sess = create_session()
+    user = message.from_user.username
+    group = db_sess.query(Groups).filter(Groups.members.like(f'%{user}%')).first()
+    if user in group.root:
+        await message.reply_document(open(f"attendance/{group.group_number}.xlsx",'rb'))
+        db_sess.commit()
+    else:
+        await bot.send_message(message.chat.id, 'Ты не староста')
+
 @dp.message_handler(state=HomeworkSendState.homework_files_state)
-async def upload_homework(message: types.message, state: FSMContext):
+async def upload_homework(message: types.Message, state: FSMContext):
     if len(message.text) == 10 and type(int(message.text.split('-')[0])) == int:
         await state.update_data(deadline_date=message.text)
         await bot.send_message(message.chat.id, 'Отправь файлы')
@@ -351,46 +362,46 @@ async def attend(message: types.Message,state:FSMContext):
     data = await state.get_data()
     group = data['group']
     sub = data['subject']
-    if (not os.path.isfile(f"attendance/{group}.xlsx")):
+    if (not attless(group,sub,lat,lon)):
         await  message.reply('Ты слишком далеко или пары нет')
         await state.finish()
+    else:
+        wb = openpyxl.load_workbook(f"attendance/{group}.xlsx")
+        ws = wb[f'{sub}']
+        column_max = ws.cell(column=4,row=1).value + 3
+        colum_point = 3
+        flag = False
+        while(colum_point <= column_max):
+            if ws.cell(row=colum_point,column=1).value == data['user']:
+                ws.cell(row=colum_point,column=ws.cell(row=1,column=3).value + 2).value = '+'
+                await bot.send_message(message.chat.id,'Успешно')
+                flag = True
+                wb.save(f"attendance/{group}.xlsx")
+                break
+            else:
+                colum_point +=1
+        if not flag:
+            await bot.send_message(message.chat.id, 'Напиши свое ФИО')
+            await Attend.attend3.set()
+        else:
+            await state.finish()
+        await message.answer(reply, reply_markup=types.ReplyKeyboardRemove())
+
+@dp.message_handler(state=Attend.attend3)
+async def attendf(message: types.Message,state:FSMContext):
+    data = await state.get_data()
+    group = data['group']
+    sub = data['subject']
     wb = openpyxl.load_workbook(f"attendance/{group}.xlsx")
     ws = wb[f'{sub}']
-
-    await message.answer(reply, reply_markup=types.ReplyKeyboardRemove())
-    await state.finish()
-def attless(group,sub,lat,lon):
-    if (os.path.isfile(f"attendance/{group}.xlsx")):
-        wb = openpyxl.load_workbook(f"attendance/{group}.xlsx")
-    else:
-        return 1
-    ws = wb[f'{sub}']
-    if(abs((ws.cell(row=1, column=1).value + ws.cell(row=1, column=2).value) - (lat+lon)) >25 ):
-        wb.save(f"attendance/{group}.xlsx")
-        return 1
-    elif(ws.cell(row=1, column=3).value ==  1):
-        return 2
-    else:
-        return 3
-
-def nless(group,sub,lat,lon):
-
-    if (os.path.isfile(f"attendance/{group}.xlsx")):
-        wb = openpyxl.load_workbook(f"attendance/{group}.xlsx")
-    else:
-        wb = Workbook()
-    if f'{sub}' in wb.sheetnames:
-        ws = wb[f'{sub}']
-    else:
-        wb.create_sheet(f'{sub}')
-        ws = wb[f'{sub}']
-        ws.cell(row=1, column=3).value = 0
-        ws.cell(row=1, column=4).value = 0
-    ws.cell(row=1, column=1).value = lat
-    ws.cell(row=1, column=2).value = lon
-    ws.cell(row=1, column=3).value +=  1
-    ws.cell(row=2, column= 2 + ws.cell(row=1, column=3).value).value = datetime.date.today()
+    ws.cell(column=1,row= ws.cell(column=4,row=1).value +3).value = data['user']
+    ws.cell(column=2, row=ws.cell(column=4, row=1).value + 3).value = message.text
+    ws.cell(column=4, row=1).value += 1
+    ws.cell(column=ws.cell(row=1,column=3).value + 2,row= ws.cell(column=4,row=1).value +2).value = '+'
+    await bot.send_message(message.chat.id,'Успешно')
     wb.save(f"attendance/{group}.xlsx")
+    await state.finish()
+
 
 @dp.message_handler(state=DeadlineWriteState.deadline_date)
 async def get_ddate(message: types.Message, state: FSMContext):
@@ -447,7 +458,7 @@ async def deadline(message: types.Message):
 
 @dp.message_handler(commands=['help'])
 async def help(message: types.Message):
-    await bot.send_message(message.chat.id,'Команды:\n /help\n /deadline\n /alldeadlines\n /adddeadline\n /alarm\n /start\n /root')
+    await bot.send_message(message.chat.id,'Команды:\n /help\n /deadline\n /alldeadlines\n /adddeadline\n /alarm\n /start\n /root \n attendance \n gnumber')
 
 @dp.message_handler(commands=['root'])
 async def root(message: types.Message):
@@ -533,7 +544,7 @@ async def gnumber(message: types.Message):
         user = message.from_user.username
         group = db_sess.query(Groups).filter(Groups.group_chat_id == message.chat.id).first()
         if user in group.root:
-            await bot.send_message(message.chat.id,"Введи номер группы")
+            await bot.send_message(message.chat.id,"Введи номер группы, не используй '/'")
             db_sess.commit()
             await Gnumber.gnumber1.set()
         else:
@@ -576,6 +587,37 @@ async def usernames_capture(message: types.Message):
 #     group = db_sess.query(Groups).filter(Groups.group_chat_id == message.chat.id).first()
 #     message.text.split(' ')
 
+def attless(group,sub,lat,lon):
+    if (os.path.isfile(f"attendance/{group}.xlsx")):
+        wb = openpyxl.load_workbook(f"attendance/{group}.xlsx")
+    else:
+        return False
+    if sub in wb.sheetnames:
+        ws = wb[f'{sub}']
+    else:
+        return False
+    if(abs((ws.cell(row=1, column=1).value + ws.cell(row=1, column=2).value) - (lat+lon)) >0.000025 ):
+        return False
+    return True
+
+def nless(group,sub,lat,lon):
+
+    if (os.path.isfile(f"attendance/{group}.xlsx")):
+        wb = openpyxl.load_workbook(f"attendance/{group}.xlsx")
+    else:
+        wb = Workbook()
+    if f'{sub}' in wb.sheetnames:
+        ws = wb[f'{sub}']
+    else:
+        wb.create_sheet(f'{sub}')
+        ws = wb[f'{sub}']
+        ws.cell(row=1, column=3).value = 0
+        ws.cell(row=1, column=4).value = 0
+    ws.cell(row=1, column=1).value = lat
+    ws.cell(row=1, column=2).value = lon
+    ws.cell(row=1, column=3).value +=  1
+    ws.cell(row=2, column= 2 + ws.cell(row=1, column=3).value).value = datetime.date.today()
+    wb.save(f"attendance/{group}.xlsx")
 def search_user_in_groups(username):
     db_sess = create_session()
     groups = db_sess.query(Groups).all()
@@ -611,7 +653,7 @@ async def reminder(dp):
     db_sess.commit()
 
 
-scheduler.add_job(reminder, "cron", hour= 14, minute= 1, args=(dp,))
+scheduler.add_job(reminder, "cron", hour= 8, minute= 0, args=(dp,))
 
 
 def db_connect():
